@@ -1,0 +1,25 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function self(uid) { return signedIn() && request.auth.uid == uid; }
+    function role() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+    }
+    function staff() { return signedIn() && role() in ['teacher', 'admin']; }
+
+    match /users/{uid} {
+      allow create: if self(uid) && request.resource.data.role == 'student';
+      allow read: if self(uid) || staff();
+      allow update: if self(uid)
+        && request.resource.data.role == resource.data.role
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name']);
+      allow delete: if signedIn() && role() == 'admin';
+    }
+
+    match /progress/{uid} {
+      allow create, read, update: if self(uid) || staff();
+      allow delete: if signedIn() && role() == 'admin';
+    }
+  }
+}
